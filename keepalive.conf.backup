@@ -1,0 +1,82 @@
+! ============================================================================
+! File Name    : keepalived.conf.backup
+! Description  : Configuration File for Keepalived (Backup) in WHPG HA setup.
+! Organization : S-Core
+! Author       : Kyuhwan Lee
+! Date         : 2026-03-12
+! Version      : 2.0.0
+! OS           : RHEL 9.4
+! Ownership    : root:root (644)
+! Dependencies : Keepalived daemon, network interface (VIP)
+!
+! Modification History:
+! Date       | Version | Author          | Description
+! -----------|---------|-----------------|------------------------------------
+! 2025-XX-XX | 1.0.0   | paul.son (EDB)  | Initial creation for Greenplum/WHPG HA setup.
+! 2026-03-12 | 2.0.0   | Kyuhwan Lee     | Applied enterprise-grade enhancements,
+!                                        | including fixes for 'Suicide by pkill' regex bug, 
+!                                        | strict VIP/DB stop order for Split-Brain prevention, 
+!                                        | and switchover polling optimization.
+! ============================================================================
+
+! Configuration File for keepalived (Backup)
+
+global_defs {
+    router_id <Standby_Coordinator_Hostname>
+    script_user gpadmin
+    enable_script_security
+}
+
+# 1. Local DB Process Health Check
+vrrp_script chk_service_health {
+    script "/etc/keepalived/check_my_service.sh"
+    interval 3
+    fall 2
+    rise 1
+}
+
+# 2. Gateway Quorum Check (Split-Brain Prevention)
+# Modify <Gateway_IP> to your actual L3 Gateway or Core Switch IP
+vrrp_script chk_gateway_quorum {
+    script "/bin/ping -c 2 -W 1 <Gateway_IP>"
+    interval 3
+    fall 2
+    rise 2
+}
+
+vrrp_instance VI_1 {
+    # Backup node is also BACKUP
+    state BACKUP
+    interface <Network_Inferface>
+    virtual_router_id 51
+    # Priority must be lower than the Master node
+    priority 90
+    advert_int 1
+
+    # Strictly prevent automatic VIP recovery
+    nopreempt
+
+    authentication {
+        auth_type PASS
+        auth_pass secretpw
+    }
+
+    unicast_src_ip <Standby_Coordinator_IP_ADDR>
+    unicast_peer {
+        <Coordinator_IP_ADDR>
+    }
+
+    virtual_ipaddress {
+        <VIP/CIDR> dev <Network_Inferface> label <Network_Inferface>:0
+    }
+
+    track_script {
+        chk_service_health
+    }
+
+    # Ensure notify_fault is active to log and alert if the Standby DB fails
+    notify_master "/etc/keepalived/notify_master.sh MASTER"
+    notify_backup "/etc/keepalived/notify_state_change.sh BACKUP"
+    notify_fault "/etc/keepalived/notify_state_change.sh FAULT"
+    notify_stop "/etc/keepalived/notify_state_change.sh STOP"
+}
