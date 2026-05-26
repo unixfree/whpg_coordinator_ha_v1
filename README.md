@@ -1,5 +1,5 @@
-## whpg_coordinator_ha_v1
-S-Core LKH 님이 기여한 코드 입니다.
+## whpg_coordinator_ha_v2
+S-Core의 Kyuhwan Lee 님이 기여한 코드 입니다.
 
 ### setup keepalived at Coordinator and standby Coordinator
  ```
